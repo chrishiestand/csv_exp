@@ -44,7 +44,7 @@ import csv
 import argparse
 try:
     import cx_Oracle
-except:
+except ImportError:
     print("No cx_Oracle module available.\nTo install, run:\n"
           "\tpip install cx_Oracle")
     sys.exit(1)
