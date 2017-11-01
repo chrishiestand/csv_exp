@@ -87,7 +87,7 @@ def get_safe_columns(conn, table, exclude=None):
                                    if col.startswith(table)])
 
     if len(obj) == 0 or len(obj) > 2:
-        raise ValueError("Failed to parse table name: {0}".table)
+        raise ValueError("Failed to parse table name: {0}".format(table))
     elif len(obj) == 1:
         stmt = """
             SELECT COLUMN_NAME,DATA_TYPE
@@ -202,7 +202,7 @@ def main():
     license = ('CSV Exporter for Oracle v.{0}. (c) 2017 Dbvisit Software Ltd.'
                '\nThis program comes with ABSOLUTELY NO WARRANTY.\n'
                'This is free software, and you are welcome to redistribute it '
-               'under\ncertain conditions.'
+               'under\ncertain conditions.\n'
                .format(VERSION))
 
     # command line
@@ -264,7 +264,7 @@ def main():
     try:
         conn = cx_Oracle.connect(args.oracle_logon)
     except cx_Oracle.DatabaseError:
-        sys.stderr.write("Unable to connect: {0}".format(sys.exc_info()[1]))
+        sys.stderr.write("Unable to connect: {0}\n".format(sys.exc_info()[1]))
         sys.exit(1)
     # initial setting
     if args.array_size:
@@ -297,7 +297,7 @@ def main():
         sys.stderr.write("Error occured: {0}\n".format(sys.exc_info()[1]))
         retval = 1
     except:
-        sys.stderr.write("Something bad happened: {0}"
+        sys.stderr.write("Something bad happened: {0}\n"
                          .format(sys.exc_info()[1]))
         retval = 1
     finally:
