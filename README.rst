@@ -22,16 +22,17 @@ code.
 
 Run with ``-h`` parameter to see the help screen::
   
-  usage: csv_exp [-h] (-s SCHEMA | -t TABLE | [--sql SQL | -f FILE] [-xc COLUMN]
-                 [--scn SCN] [--null-as NULL_AS] [--array-size ARRAY_SIZE]
-                 [--no-header] [--crlf] [--version]
-                 oracle_logon
-  
-  CSV Exporter for Oracle v.0.2. (c) 2017 Dbvisit Software Ltd.
-  
+  usage: csv_exp.py [-h] (-s SCHEMA | -t TABLE | -l FILENAME |
+                    [--sql SQL | -f FILE] [-xc COLUMN] [--scn SCN]
+                    [--null-as NULL_AS] [--array-size ARRAY_SIZE] [--no-header]
+                    [--crlf] [--version]
+                    oracle_logon
+
+  CSV Exporter for Oracle v.0.2.1. (c) 2017 Dbvisit Software Ltd.
+
   positional arguments:
     oracle_logon          {<username>[/<password>][@<connect_identifier>] | / }
-  
+
   optional arguments:
     -h, --help            show this help message and exit
     -s SCHEMA, --schema SCHEMA
@@ -42,6 +43,9 @@ Run with ``-h`` parameter to see the help screen::
                           tables to export. Can be specified more than once, if
                           no schema specified, then tables will be exported from
                           the current user specified by <oracle_logon>
+    -l FILENAME, --table-list FILENAME
+                          file containing the list of tables for export. Each
+                          line may contain only one table.
     --sql SQL             SQL Statement to execute to produce CSV. Data is
                           printed to STDOUT
     -f FILE, --file FILE  file to read the SQL Statement from. If FILE is '-'
@@ -60,6 +64,7 @@ Run with ``-h`` parameter to see the help screen::
     --crlf                use DOS format for line ending (\r + \n). By default,
                           UNIX format is used (\n)
     --version             show program's version number and exit
+
 
 Installation and Usage
 ----------------------
@@ -88,6 +93,17 @@ Examples
   redirect the output somewhere::
 
     csv_exp.py --sql "SELECT * FROM SCHEMA.MY_VIEW" scott/tiger > output.csv
+
+- Exporting several tables, reading table names from file:
+  
+  * Create a file, i.e. ``my_tables.txt``::
+    
+      TABLE1
+      TABLE2
+
+  * Start the export::
+    
+      csv_exp.py -l my_tables.txt scott/tiger@ORCL
 
 
 cx_Oracle Licence

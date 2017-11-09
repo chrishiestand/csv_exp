@@ -54,7 +54,7 @@ DEFAULT_ARRAY = 16384
 # output column names
 OUTPUT_HEADER = True
 # current version
-VERSION = '0.2'
+VERSION = '0.2.1'
 # unsupported types
 UNSUPPORTED_TYPES = ['INTERVAL YEAR(2) TO MONTH']
 # default NULL
@@ -223,6 +223,11 @@ def main():
                              "more than once, if no schema specified, then "
                              "tables will be exported from the current user "
                              "specified by <oracle_logon>"))
+    group.add_argument('-l', '--table-list', type=argparse.FileType('rb'),
+                       action='store', dest='tablist',
+                       metavar='FILENAME',
+                       help=("file containing the list of tables for export.  "
+                             "Each line may contain only one table."))
     group_sql = group.add_mutually_exclusive_group(required=False)
     group_sql.add_argument('--sql', action='store',
                            help=("SQL Statement to execute to produce CSV.  "
@@ -286,6 +291,10 @@ def main():
         elif args.tables is not None:
             for table in args.tables:
                 exp_table(conn, table, args.scn, args.exclude)
+        # -l filename
+        elif args.tablist is not None:
+            for table in args.tablist:
+                exp_table(conn, table.strip('\n'), args.scn, args.exclude)
         # -s sql
         elif args.sql is not None:
             exp_sql(conn, sys.stdout, args.sql)
