@@ -169,6 +169,7 @@ def exp_sql(conn, file_handle, stmt):
     :param str stmt: statement to execute
 
     """
+    stmt=stmt.strip().rstrip(";")
     cur = conn.cursor()
     cur.execute(stmt)
     csv_writer = csv.writer(file_handle, dialect="excel",
