@@ -224,7 +224,7 @@ def main():
                              "more than once, if no schema specified, then "
                              "tables will be exported from the current user "
                              "specified by <oracle_logon>"))
-    group.add_argument('-l', '--table-list', type=argparse.FileType('rb'),
+    group.add_argument('-l', '--table-list', type=argparse.FileType('r'),
                        action='store', dest='tablist',
                        metavar='FILENAME',
                        help=("file containing the list of tables for export.  "
