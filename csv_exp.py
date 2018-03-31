@@ -154,7 +154,7 @@ def exp_table(conn, table, scn=None, exclude=None):
                                         table)
     if scn is not None:
         stmt = stmt + ' AS OF SCN {0}'.format(str(scn))
-    with open("{0}.csv".format(table), "wb") as f:
+    with open("{0}.csv".format(table), "w") as f:
         exp_sql(conn, f, stmt)
 
 
