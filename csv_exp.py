@@ -172,7 +172,7 @@ def exp_sql(conn, file_handle, stmt):
     stmt=stmt.strip().rstrip(";")
     cur = conn.cursor()
     cur.execute(stmt)
-    csv_writer = csv.writer(file_handle, dialect="excel",
+    csv_writer = csv.writer(file_handle, dialect="unix",
                             lineterminator=LINETERM)
     if OUTPUT_HEADER:
         csv_writer.writerow([c[0] for c in cur.description])
