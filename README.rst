@@ -21,7 +21,7 @@ than welcomed to  to contribute and make modifications or improvements to the
 code.
 
 Run with ``-h`` parameter to see the help screen::
-  
+
   usage: csv_exp.py [-h] (-s SCHEMA | -t TABLE | -l FILENAME |
                     [--sql SQL | -f FILE] [-xc COLUMN] [--scn SCN]
                     [--null-as NULL_AS] [--array-size ARRAY_SIZE] [--no-header]
@@ -68,19 +68,24 @@ Run with ``-h`` parameter to see the help screen::
 
 Installation and Usage
 ----------------------
-Make sure that you have the ``cx_Oracle`` module installed. If not - 
-run ``easy_install cx_Oracle`` or ``pip install cx_Oracle`` depending
-on the package manager installed on your system as csv_exp depends on it.
 
-Then just copy ``csv_exp.py`` somewhere accessisble, like your ``~/bin`` folder 
-or ``/usr/local/bin``.
+This package uses the python package cx_Oracle. The ugly part is that it requires the oracle client library. This branch comes with the client libary supporting Oracle DB 9+, for the newer library see the branch `oracle-client-12`.
+
+In the instructions below, we assume an install for Mac OS. For other OSes and versions see <https://cx-oracle.readthedocs.io/en/latest/installation.html>
+
+.. code-block:: bash
+
+  mkvirtualenv oracle-db
+  pip install -r requirements.txt
+  test \! -e ~/lib && rsync -av lib-oracle-client-11.2/ ~/lib || echo "~/lib already exists, manually copy the files there"
+
 
 Examples
 --------
 
 - Export whole schema. This will create a number of ``SCHEMA.*.csv`` files in
   the current directory::
-    
+
     csv_exp.py -s SCHEMA user/pwd@ORCL
 
 - Exporting several tables (assuming that user ``scott`` has grant to select
@@ -88,21 +93,21 @@ Examples
 
     csv_exp.py -t TABLE1 -t SCHEMA1.TABLE4 scott/tiger@ORCL
 
-- Exporting the result of SQL execution. Result of ``--sql`` are not being 
+- Exporting the result of SQL execution. Result of ``--sql`` are not being
   saved to any file, but output to STDOUT by default, so you'll need to
   redirect the output somewhere::
 
     csv_exp.py --sql "SELECT * FROM SCHEMA.MY_VIEW" scott/tiger > output.csv
 
 - Exporting several tables, reading table names from file:
-  
+
   * Create a file, i.e. ``my_tables.txt``::
-    
+
       TABLE1
       TABLE2
 
   * Start the export::
-    
+
       csv_exp.py -l my_tables.txt scott/tiger@ORCL
 
 
@@ -124,7 +129,7 @@ modification, are permitted provided that the following conditions are met:
    this list of conditions, and the following disclaimer in the documentation
    and/or other materials provided with the distribution.
 
-3. Neither the names of the copyright holders nor the names of any contributors 
+3. Neither the names of the copyright holders nor the names of any contributors
    may be used to endorse or promote products derived from this software without
    specific prior written permission.
 

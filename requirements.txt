@@ -1,1 +1,2 @@
 cx-Oracle==6.2.1
+python-magic==0.4.15

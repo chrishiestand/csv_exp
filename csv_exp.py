@@ -42,11 +42,18 @@ import sys
 import os
 import csv
 import argparse
+import hashlib
+import mimetypes
+
+from timeit import default_timer as timer
+
+import magic
+
 try:
     import cx_Oracle
 except ImportError:
     print("No cx_Oracle module available.\nTo install, run:\n"
-          "\tpip install cx_Oracle")
+          "\tpip install cx_Oracle", file=sys.stderr)
     sys.exit(1)
 
 # default number of rows per write
@@ -56,12 +63,13 @@ OUTPUT_HEADER = True
 # current version
 VERSION = '0.2.1'
 # unsupported types
-UNSUPPORTED_TYPES = ['INTERVAL YEAR(2) TO MONTH', 'BLOB']
+UNSUPPORTED_TYPES = ['INTERVAL YEAR(2) TO MONTH']
 # default NULL
 NULL_AS = None
 # default line terminator for CSV file
 LINETERM = '\n'
 
+binary_type_map = {cx_Oracle.BINARY: 'RAW', cx_Oracle.LONG_BINARY: 'LONG RAW', cx_Oracle.BLOB: 'BLOB'}
 
 def get_safe_columns(conn, table, exclude=None):
     """Get the list of columns and filter out the unsupported ones
@@ -124,7 +132,7 @@ def get_safe_columns(conn, table, exclude=None):
     return safe_columns
 
 
-def exp_schema(conn, schema, scn=None, exclude=None):
+def exp_schema(conn, schema, scn=None, exclude=None, output_path=None):
     """Export SCHEMA
 
     :param cx_Oracle.connect conn: Oracle connection (must be established)
@@ -135,10 +143,10 @@ def exp_schema(conn, schema, scn=None, exclude=None):
     tabs.execute("SELECT OWNER||'.'||TABLE_NAME FROM ALL_TABLES "
                  "WHERE OWNER = :1", (schema,))
     for row in tabs:
-        exp_table(conn, row[0], scn, exclude)
+        exp_table(conn, row[0], scn, exclude, output_path)
 
 
-def exp_table(conn, table, scn=None, exclude=None):
+def exp_table(conn, table, scn=None, exclude=None, output_path=None):
     """Export TABLE
 
     Export given <table> to the <table>.csv file
@@ -154,11 +162,17 @@ def exp_table(conn, table, scn=None, exclude=None):
                                         table)
     if scn is not None:
         stmt = stmt + ' AS OF SCN {0}'.format(str(scn))
-    with open("{0}.csv".format(table), "w") as f:
-        exp_sql(conn, f, stmt)
+
+    filename        = "{0}.csv".format(table)
+    csv_path        = os.path.join(output_path, filename)
+    binary_path     = os.path.join(output_path, table)
+    binary_rel_path = os.path.relpath(binary_path, output_path)
+
+    with open(csv_path, "w") as f:
+        exp_sql(conn, f, stmt, binary_path, binary_rel_path)
 
 
-def exp_sql(conn, file_handle, stmt):
+def exp_sql(conn, file_handle, stmt, binary_path=None, binary_rel_path=None):
     """Data exporter
 
     Runs statement and outputs the result to file_handle in csv format.
@@ -169,15 +183,48 @@ def exp_sql(conn, file_handle, stmt):
     :param str stmt: statement to execute
 
     """
+
+    start = timer()
+
     stmt=stmt.strip().rstrip(";")
     cur = conn.cursor()
     cur.execute(stmt)
+
+    rowcount = 0
+
+    rows = cur.fetchmany(DEFAULT_ARRAY)
+    binary_by_filename = {}
+
     csv_writer = csv.writer(file_handle, dialect="unix",
                             lineterminator=LINETERM)
     if OUTPUT_HEADER:
         csv_writer.writerow([c[0] for c in cur.description])
-    rows = cur.fetchmany(DEFAULT_ARRAY)
+
     while len(rows) > 0:
+
+        rowcount += len(rows)
+
+        if binary_path and binary_rel_path:
+            rows, binary_by_filename = transform_row_binary(cur.description, binary_rel_path, rows)
+
+        if len(binary_by_filename):
+            try:
+                os.mkdir(binary_path, mode=0o700)
+            except FileExistsError:
+                pass
+
+        for hash, binary in binary_by_filename.items():
+
+            write_path = os.path.join(binary_path, hash)
+
+            if os.path.exists(write_path):
+                print("file {0} already exists, skipping".format(write_path), file=sys.stderr)
+                continue
+
+            with open(write_path, mode='bx') as f:
+                f.write(binary)
+                f.close()
+
         # Substitute null with the requred value
         if NULL_AS:
             for r in range(0, len(rows)):
@@ -187,10 +234,103 @@ def exp_sql(conn, file_handle, stmt):
                         if row[i] is None:
                             row[i] = NULL_AS
                     rows[r] = row
+
         csv_writer.writerows(rows)
+        print('.', end='', file=sys.stderr)
         rows = cur.fetchmany(DEFAULT_ARRAY)
+
     cur.close()
 
+    stop = timer()
+    duration_s = round(stop - start, 3)
+    rate = round(rowcount / duration_s, 2)
+
+    print("exported {0} rows in {1}s {2}rows/s from sql '{3}'".format(rowcount, duration_s, rate, stmt), file=sys.stderr)
+
+
+def transform_row_binary(cx_description, binary_rel_path, rows):
+
+    binary_cols = binaryColumnIdxs(cx_description, rows)
+    binary_by_filename = {}
+
+    if not len(binary_cols):
+        return rows, binary_by_filename
+
+    for ri, row in enumerate(rows):
+        for col in binary_cols:
+
+            objOrBytes = row[col]
+
+            # cx_Oracle.BLOB gives object, RAW returns bytes
+            if hasattr(objOrBytes, 'read') and callable(objOrBytes.read):
+                data = objOrBytes.read()
+            else:
+                data = objOrBytes
+
+            if not data:
+                print("binary data is empty, skipping column {0} in row: {0}".format(col, row), file=sys.stderr)
+                l = list(row)
+                l[col] = ''
+                rows[ri] = tuple(l)
+                continue
+
+            extension = detectFileExtension(data)
+
+            m = hashlib.sha256()
+            m.update(data)
+            hash = m.hexdigest()
+
+            if extension:
+                filename = "{0}{1}".format(hash, extension)
+            else:
+                filename = hash
+
+            binary_by_filename[filename] = data
+            l = list(row)
+            l[col] = "file://{0}/{1}".format(binary_rel_path, filename)
+            rows[ri] = tuple(l)
+
+    return rows, binary_by_filename
+
+# Returns empty string "" or ".ext"
+def detectFileExtension(byts):
+    mime_data = magic.from_buffer(byts, mime=True)
+
+    if not mime_data:
+        return ''
+
+    extension = mimetypes.guess_extension(mime_data)
+
+    if not extension:
+        extension = '.' + mime_data.split('/').pop()
+
+    return extension
+
+def binaryColumnIdxs(cx_description, rows):
+    binary_cols = []
+
+    for i, x in enumerate(cx_description):
+
+        col_name = x[0]
+        driver_type = x[1]
+
+        db_binary_type = None
+        driver_binary_types = binary_type_map.keys()
+
+        if db_binary_type in driver_binary_types:
+            db_binary_type = binary_type_map[driver_type]
+
+        if driver_type in [cx_Oracle.LONG_BINARY, cx_Oracle.BINARY, cx_Oracle.BLOB]:
+            binary_cols.append(i)
+
+    return binary_cols
+
+def fastLobHandler(cursor, name, defaultType, size, precision, scale):
+
+    if defaultType == cx_Oracle.CLOB:
+        return cursor.var(cx_Oracle.LONG_STRING, arraysize = cursor.arraysize)
+    if defaultType == cx_Oracle.BLOB:
+        return cursor.var(cx_Oracle.LONG_BINARY, arraysize = cursor.arraysize)
 
 def main():
     global DEFAULT_ARRAY
@@ -198,7 +338,6 @@ def main():
     global VERSION
     global NULL_AS
     global LINETERM
-    retval = 0
 
     license = ('CSV Exporter for Oracle v.{0}. (c) 2017 Dbvisit Software Ltd.'
                '\nThis program comes with ABSOLUTELY NO WARRANTY.\n'
@@ -239,6 +378,9 @@ def main():
     # parser.add_argument('-C', metavar="DIR", dest='directory', default=".",
     #                     help=("change to directory DIR.  Default - output "
     #                           "to current directory"))
+
+    parser.add_argument('-p', '--output-path', action='store', dest='output_path',
+                           help=("path to write csv data to"))
     parser.add_argument('-xc', '--exclude-column', action='append',
                         dest='exclude', metavar='COLUMN',
                         help=("specify columns to exclude. Can be specified "
@@ -282,20 +424,29 @@ def main():
     if args.crlf:
         LINETERM = '\r\n'
 
+    output_path = None
+
+    if args.output_path:
+        output_path = os.path.abspath(args.output_path)
+    else:
+        output_path = os.curdir
+
+    conn.outputtypehandler = fastLobHandler
+
     # exporting
     try:
         # -o schemas
         if args.schemas is not None:
             for schema in args.schemas:
-                exp_schema(conn, schema, args.scn, args.exclude)
+                exp_schema(conn, schema, args.scn, args.exclude, output_path)
         # -t tables
         elif args.tables is not None:
             for table in args.tables:
-                exp_table(conn, table, args.scn, args.exclude)
+                exp_table(conn, table, args.scn, args.exclude, output_path)
         # -l filename
         elif args.tablist is not None:
             for table in args.tablist:
-                exp_table(conn, table.strip('\n'), args.scn, args.exclude)
+                exp_table(conn, table.strip('\n'), args.scn, args.exclude, output_path)
         # -s sql
         elif args.sql is not None:
             exp_sql(conn, sys.stdout, args.sql)
@@ -303,17 +454,12 @@ def main():
         elif args.file is not None:
             stmt = args.file.read()
             exp_sql(conn, sys.stdout, stmt)
-    except cx_Oracle.DatabaseError:
-        sys.stderr.write("Error occured: {0}\n".format(sys.exc_info()[1]))
-        retval = 1
     except:
-        sys.stderr.write("Something bad happened: {0}\n"
-                         .format(sys.exc_info()[1]))
-        retval = 1
-    finally:
         conn.close()
-        return retval
+        raise
+
+    conn.close()
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()
