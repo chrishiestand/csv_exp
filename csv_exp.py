@@ -56,7 +56,7 @@ OUTPUT_HEADER = True
 # current version
 VERSION = '0.2.1'
 # unsupported types
-UNSUPPORTED_TYPES = ['INTERVAL YEAR(2) TO MONTH']
+UNSUPPORTED_TYPES = ['INTERVAL YEAR(2) TO MONTH', 'BLOB']
 # default NULL
 NULL_AS = None
 # default line terminator for CSV file
